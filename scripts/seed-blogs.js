@@ -245,9 +245,9 @@ Remember, the goal isn't perfection but progress. Small, consistent improvements
         updatedAt: new Date()
     },
     {
-        title: "Cloud Computing Trends: What's Next in 2024",
+        title: "Cloud Computing Trends: What's Next in 2025",
         excerpt: "Discover the latest trends in cloud computing and how they're shaping the future of technology.",
-        content: `Cloud computing continues to evolve rapidly, bringing new opportunities and challenges for businesses and developers. As we move through 2024, several key trends are shaping the future of cloud technology and how organizations leverage it for competitive advantage.
+        content: `Cloud computing continues to evolve rapidly, bringing new opportunities and challenges for businesses and developers. As we move through 2025, several key trends are shaping the future of cloud technology and how organizations leverage it for competitive advantage.
 
 Multi-Cloud and Hybrid Cloud Strategies
 
@@ -319,7 +319,7 @@ async function seedBlogs() {
         await client.connect();
         console.log('✅ Connected to MongoDB');
 
-        const db = client.db('LinkShorti');
+        const db = client.db('BlogVerse');
         const blogsCollection = db.collection('blogs');
 
         // Clear existing blogs (optional)

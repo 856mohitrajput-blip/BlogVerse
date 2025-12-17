@@ -7,7 +7,7 @@ export async function GET(request) {
         const category = searchParams.get('category');
 
         const client = await clientPromise;
-        const db = client.db('LinkShorti');
+        const db = client.db('BlogVerse');
         
         // Build query
         const query = category ? { category } : {};

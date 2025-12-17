@@ -1,1 +1,1 @@
-# LinkShorti - URL Shortener with Monetization Flow
+# BlogVerse - Blog Platform

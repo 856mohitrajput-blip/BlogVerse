@@ -36,7 +36,7 @@ async function seedAdmin() {
         await client.connect();
         console.log('✅ Connected to MongoDB');
 
-        const db = client.db('LinkShorti');
+        const db = client.db('BlogVerse');
         const adminsCollection = db.collection('admins');
 
         // Clear existing admins (optional)

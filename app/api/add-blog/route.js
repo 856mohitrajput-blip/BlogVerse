@@ -7,15 +7,15 @@ export async function POST(request) {
         const { title, excerpt, content, category, image, readTime } = body;
 
         // Validate required fields
-        if (!title || !excerpt || !category) {
+        if (!title || !excerpt || !category || !content) {
             return NextResponse.json({
                 success: false,
-                error: 'Missing required fields'
+                error: 'Missing required fields: title, excerpt, category, and content are required'
             }, { status: 400 });
         }
 
         const client = await clientPromise;
-        const db = client.db('LinkShorti');
+        const db = client.db('BlogVerse');
         
         // Create blog document
         const blog = {

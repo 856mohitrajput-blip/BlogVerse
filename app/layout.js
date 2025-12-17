@@ -12,16 +12,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "LinkShorti - URL Shortener & Link Management",
-  description: "Powered by LinkShorti - The ultimate URL shortening and link management platform",
-  icons: {
-    icon: [
-      { url: '/logo.jpg' },
-      { url: '/favicon.ico' },
-    ],
-    shortcut: '/favicon.ico',
-    apple: '/logo.jpg',
-  },
+  title: "BlogVerse - Blog Platform",
+  description: "Powered by BlogVerse - The ultimate blog platform",
 };
 
 export default function RootLayout({ children }) {

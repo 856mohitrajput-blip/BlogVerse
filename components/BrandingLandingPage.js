@@ -2,15 +2,14 @@
 
 import React from 'react';
 import { CheckCircle, Zap, TrendingUp } from 'lucide-react';
-import Image from 'next/image';
 
 // NOTE: This variable is used for display purposes only, matching your original file structure.
 const NEXT_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
 const FooterBranding = () => (
     <footer className="mt-12 w-full max-w-5xl text-center text-sm text-gray-400 border-t border-gray-200 pt-6">
-        <p className="font-medium text-gray-500">&copy; 2024 LinkShorti. All rights reserved.</p>
-        <p className="mt-1 text-gray-400">The ultimate URL shortening and link management platform.</p>
+        <p className="font-medium text-gray-500">&copy; 2025 BlogVerse. All rights reserved.</p>
+        <p className="mt-1 text-gray-400">The ultimate blog platform.</p>
     </footer>
 );
 
@@ -19,21 +18,11 @@ const BrandingLandingPage = () => (
 
         {/* Header Section */}
         <header className="text-center mb-10 md:mb-16">
-            {/* Logo */}
-            <div className="mb-8">
-                <Image
-                    src="/logo.jpg"
-                    alt="LinkShorti Logo"
-                    width={96}
-                    height={96}
-                    className="w-24 h-24 mx-auto rounded-2xl shadow-lg object-cover"
-                />
-            </div>
-            <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-500 tracking-tighter">
-                LinkShorti
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-gray-900 tracking-tight">
+                BlogVerse
             </h1>
             <p className="mt-4 text-lg sm:text-xl font-medium text-gray-600 max-w-3xl mx-auto">
-                The ultimate URL shortening and link management platform. Transform your links into powerful marketing tools.
+                The ultimate blog platform. Transform your content into powerful stories.
             </p>
         </header>
 

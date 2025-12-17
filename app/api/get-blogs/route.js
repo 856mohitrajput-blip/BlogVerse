@@ -4,13 +4,12 @@ import clientPromise from '@/lib/mongodb';
 export async function GET() {
     try {
         const client = await clientPromise;
-        const db = client.db('LinkShorti');
+        const db = client.db('BlogVerse');
         
         // Fetch blogs from database, sorted by creation date
         const blogs = await db.collection('blogs')
             .find({})
             .sort({ createdAt: -1 })
-            .limit(6)
             .toArray();
 
         return NextResponse.json({

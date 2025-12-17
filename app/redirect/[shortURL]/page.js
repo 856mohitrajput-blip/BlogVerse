@@ -80,13 +80,6 @@ export default function RedirectPage({ params }) {
         <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 p-6">
             <div className="max-w-4xl w-full p-12 bg-white rounded-3xl shadow-2xl text-center border border-gray-100">
                 <div className="mb-6">
-                    <Image 
-                        src="/logo.jpg" 
-                        alt="LinkShorti Logo" 
-                        width={80}
-                        height={80}
-                        className="w-20 h-20 mx-auto rounded-2xl shadow-lg object-cover mb-4"
-                    />
                     <div className="text-4xl text-green-500">🚀</div>
                 </div>
 
@@ -95,7 +88,7 @@ export default function RedirectPage({ params }) {
                 </h2>
 
                 <p className="text-2xl text-gray-600 mb-10 font-light">
-                    Thank you for using LinkShorti! You&apos;ll be redirected to your destination in just a moment.
+                    Thank you for using BlogVerse! You&apos;ll be redirected to your destination in just a moment.
                 </p>
 
                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-8 rounded-2xl mb-10 border border-green-200">

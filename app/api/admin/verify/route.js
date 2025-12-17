@@ -13,7 +13,7 @@ export async function POST(request) {
         }
 
         const client = await clientPromise;
-        const db = client.db('LinkShorti');
+        const db = client.db('BlogVerse');
         
         // Check if admin exists with matching credentials
         const admin = await db.collection('admins').findOne({
