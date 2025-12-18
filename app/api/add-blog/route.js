@@ -1,6 +1,32 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 
+// Generate slug from title
+function generateSlug(title) {
+    return title
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '') // Remove special characters
+        .replace(/\s+/g, '-')      // Replace spaces with hyphens
+        .replace(/-+/g, '-')       // Replace multiple hyphens with single hyphen
+        .replace(/^-+|-+$/g, '');  // Remove leading/trailing hyphens
+}
+
+// Generate unique slug
+async function generateUniqueSlug(db, baseSlug) {
+    let slug = baseSlug;
+    let counter = 1;
+    
+    while (true) {
+        const existing = await db.collection('blogs').findOne({ slug });
+        if (!existing) {
+            return slug;
+        }
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+    }
+}
+
 export async function POST(request) {
     try {
         const body = await request.json();
@@ -17,9 +43,14 @@ export async function POST(request) {
         const client = await clientPromise;
         const db = client.db('BlogVerse');
         
+        // Generate unique slug from title
+        const baseSlug = generateSlug(title);
+        const slug = await generateUniqueSlug(db, baseSlug);
+        
         // Create blog document
         const blog = {
             title,
+            slug,
             excerpt,
             content: content || '',
             category,
@@ -35,6 +66,7 @@ export async function POST(request) {
         return NextResponse.json({
             success: true,
             blogId: result.insertedId,
+            slug: slug,
             message: 'Blog added successfully'
         });
     } catch (error) {

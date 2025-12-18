@@ -5,12 +5,15 @@ import clientPromise from '@/lib/mongodb';
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
-        const blogId = searchParams.get('blogId');
+        const blogSlug = searchParams.get('blogSlug');
+        const blogId = searchParams.get('blogId'); // Keep backward compatibility
 
-        if (!blogId) {
+        const identifier = blogSlug || blogId;
+
+        if (!identifier) {
             return NextResponse.json({
                 success: false,
-                error: 'Blog ID is required'
+                error: 'Blog slug or ID is required'
             }, { status: 400 });
         }
 
@@ -18,9 +21,13 @@ export async function GET(request) {
         const db = client.db('BlogVerse');
         
         // Fetch approved comments for the blog post, sorted by creation date
+        // Support both blogSlug and blogId for backward compatibility
         const comments = await db.collection('comments')
             .find({ 
-                blogId: blogId,
+                $or: [
+                    { blogSlug: identifier },
+                    { blogId: identifier }
+                ],
                 approved: true 
             })
             .sort({ createdAt: -1 })
@@ -43,13 +50,15 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         const body = await request.json();
-        const { blogId, name, email, website, comment } = body;
+        const { blogSlug, blogId, name, email, website, comment } = body;
+
+        const identifier = blogSlug || blogId;
 
         // Validation
-        if (!blogId || !name || !email || !comment) {
+        if (!identifier || !name || !email || !comment) {
             return NextResponse.json({
                 success: false,
-                error: 'Missing required fields: blogId, name, email, and comment are required'
+                error: 'Missing required fields: blogSlug (or blogId), name, email, and comment are required'
             }, { status: 400 });
         }
 
@@ -67,7 +76,8 @@ export async function POST(request) {
         
         // Insert new comment (initially not approved)
         const newComment = {
-            blogId,
+            blogSlug: blogSlug || null,
+            blogId: blogId || null,
             name,
             email,
             website: website || '',

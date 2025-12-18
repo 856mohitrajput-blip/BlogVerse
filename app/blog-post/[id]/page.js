@@ -10,7 +10,7 @@ export default function BlogPostPage({ params }) {
     const router = useRouter();
     const [blog, setBlog] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [blogId, setBlogId] = useState('');
+    const [blogSlug, setBlogSlug] = useState('');
     const [comments, setComments] = useState([]);
     const [commentForm, setCommentForm] = useState({
         name: '',
@@ -24,17 +24,17 @@ export default function BlogPostPage({ params }) {
     useEffect(() => {
         const resolveParams = async () => {
             const resolvedParams = await params;
-            setBlogId(resolvedParams.id);
+            setBlogSlug(resolvedParams.id);
         };
         resolveParams();
     }, [params]);
 
     useEffect(() => {
-        if (!blogId) return;
+        if (!blogSlug) return;
 
         const fetchBlog = async () => {
             try {
-                const response = await fetch(`/api/get-blog/${blogId}`);
+                const response = await fetch(`/api/get-blog/${blogSlug}`);
                 const data = await response.json();
                 
                 if (data.success) {
@@ -50,14 +50,14 @@ export default function BlogPostPage({ params }) {
         };
 
         fetchBlog();
-    }, [blogId]);
+    }, [blogSlug]);
 
     useEffect(() => {
-        if (!blogId) return;
+        if (!blogSlug) return;
 
         const fetchComments = async () => {
             try {
-                const response = await fetch(`/api/comments?blogId=${blogId}`);
+                const response = await fetch(`/api/comments?blogSlug=${blogSlug}`);
                 const data = await response.json();
                 if (data.success) {
                     setComments(data.comments);
@@ -68,7 +68,7 @@ export default function BlogPostPage({ params }) {
         };
 
         fetchComments();
-    }, [blogId]);
+    }, [blogSlug]);
 
     const handleCommentSubmit = async (e) => {
         e.preventDefault();
@@ -82,7 +82,7 @@ export default function BlogPostPage({ params }) {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    blogId: blogId,
+                    blogSlug: blogSlug,
                     ...commentForm
                 })
             });

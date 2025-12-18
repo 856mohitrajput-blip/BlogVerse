@@ -7,6 +7,17 @@ import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import ScrollToTop from '@/components/ScrollToTop';
 
+// Generate slug from title (for blogs that don't have a slug yet)
+const generateSlug = (title) => {
+    return title
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+};
+
 const BrandingLandingPage = () => {
     const [blogs, setBlogs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -39,6 +50,11 @@ const BrandingLandingPage = () => {
         });
     };
 
+    // Get the slug for navigation - use existing slug or generate from title
+    const getBlogSlug = (blog) => {
+        return blog.slug || generateSlug(blog.title);
+    };
+
     return (
         <div className="min-h-screen bg-white">
             <Header />
@@ -59,7 +75,7 @@ const BrandingLandingPage = () => {
                             <div
                                 key={blog._id}
                                 className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer overflow-hidden border border-gray-200"
-                                onClick={() => router.push(`/blog-post/${blog._id}`)}
+                                onClick={() => router.push(`/blog-post/${getBlogSlug(blog)}`)}
                             >
                                 {/* Category Badge */}
                                 <div className="px-4 pt-4 pb-2">

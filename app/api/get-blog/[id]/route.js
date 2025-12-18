@@ -6,22 +6,21 @@ export async function GET(request, { params }) {
     try {
         const resolvedParams = await params;
         const { id } = resolvedParams;
-        
-        // Validate ObjectId
-        if (!ObjectId.isValid(id)) {
-            return NextResponse.json({
-                success: false,
-                error: 'Invalid blog ID'
-            }, { status: 400 });
-        }
 
         const client = await clientPromise;
         const db = client.db('BlogVerse');
         
-        // Fetch blog by ID
-        const blog = await db.collection('blogs').findOne({
-            _id: new ObjectId(id)
-        });
+        let blog = null;
+        
+        // First, try to find by slug
+        blog = await db.collection('blogs').findOne({ slug: id });
+        
+        // If not found by slug and it's a valid ObjectId, try by ID (for backward compatibility)
+        if (!blog && ObjectId.isValid(id)) {
+            blog = await db.collection('blogs').findOne({
+                _id: new ObjectId(id)
+            });
+        }
 
         if (!blog) {
             return NextResponse.json({

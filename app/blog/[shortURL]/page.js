@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -17,82 +17,80 @@ export default function DynamicBlogPage({ params }) {
     const [timer, setTimer] = useState(15);
     const [linkData, setLinkData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingNextBlog, setIsLoadingNextBlog] = useState(false);
     const [blog, setBlog] = useState(null);
     const [blogIndex, setBlogIndex] = useState(0);
-    const [viewedBlogIds, setViewedBlogIds] = useState([]);
     const [isLastBlog, setIsLastBlog] = useState(false);
-    const [timerPosition, setTimerPosition] = useState('middle'); // Multiple position options
-    const [usedPositions, setUsedPositions] = useState([]); // Track used positions to avoid repeats
-    const TOTAL_BLOGS = 4; // Show 4 random blogs before redirecting
+    const [timerPosition, setTimerPosition] = useState('middle');
+    const TOTAL_BLOGS = 4;
+    
+    // Use refs to track state without causing re-renders
+    const viewedBlogIdsRef = useRef([]);
+    const lastPositionRef = useRef(null);
+    const isInitializedRef = useRef(false);
 
-    const loadRandomBlog = useCallback(async (excludeIds = []) => {
+    // Function to load random blog - doesn't depend on state that changes frequently
+    const loadRandomBlog = async (excludeIds = []) => {
         try {
             // Fetch random blog without category filter
             const blogResponse = await fetch('/api/get-random-blog');
             const blogData = await blogResponse.json();
             
             if (blogData.success && blogData.blog) {
+                let finalBlog = blogData.blog;
                 const blogId = blogData.blog._id.toString();
                 
                 // If we've already seen this blog, try again (max 5 attempts)
                 if (excludeIds.includes(blogId)) {
                     let attempts = 0;
-                    let newBlog = blogData.blog;
-                    while (excludeIds.includes(newBlog._id.toString()) && attempts < 5) {
+                    while (excludeIds.includes(finalBlog._id.toString()) && attempts < 5) {
                         const retryResponse = await fetch('/api/get-random-blog');
                         const retryData = await retryResponse.json();
                         if (retryData.success && retryData.blog) {
-                            newBlog = retryData.blog;
+                            finalBlog = retryData.blog;
                         }
                         attempts++;
                     }
-                    setBlog(newBlog);
-                    setViewedBlogIds([...excludeIds, newBlog._id.toString()]);
-                } else {
-                    setBlog(blogData.blog);
-                    setViewedBlogIds([...excludeIds, blogId]);
                 }
                 
-                // Check if this is the last blog (after adding this one, we'll have shown TOTAL_BLOGS)
-                const totalViewed = excludeIds.length + 1;
+                // Update viewed blog IDs ref
+                const newViewedIds = [...excludeIds, finalBlog._id.toString()];
+                viewedBlogIdsRef.current = newViewedIds;
+                
+                // Check if this is the last blog
+                const totalViewed = newViewedIds.length;
                 setIsLastBlog(totalViewed >= TOTAL_BLOGS);
                 
-                // Randomize timer position - NEVER consecutive same position
-                // Get the last used position (the immediately previous blog's position)
-                const lastPosition = usedPositions.length > 0 ? usedPositions[usedPositions.length - 1] : null;
-                
-                // Filter out the last position to ensure no consecutive repeats
+                // Randomize timer position - avoid consecutive same position
+                const lastPosition = lastPositionRef.current;
                 const availablePositions = lastPosition 
                     ? ALL_POSITIONS.filter(pos => pos !== lastPosition)
-                    : ALL_POSITIONS;
+                    : [...ALL_POSITIONS];
                 
-                // Ensure we have at least one available position
                 if (availablePositions.length === 0) {
-                    // Fallback: use all positions if somehow all are filtered out
                     availablePositions.push(...ALL_POSITIONS);
                 }
                 
-                // Randomly select from available positions (excluding last position)
                 const randomIndex = Math.floor(Math.random() * availablePositions.length);
                 const randomPosition = availablePositions[randomIndex];
                 
-                // Set position immediately
+                lastPositionRef.current = randomPosition;
                 setTimerPosition(randomPosition);
+                setBlog(finalBlog);
                 
-                // Add to used positions (keep only last position to track consecutive)
-                setUsedPositions(prev => {
-                    const updated = [...prev, randomPosition];
-                    // Keep only last position to check consecutive repeats
-                    return [randomPosition];
-                });
+                return finalBlog;
             }
         } catch (error) {
             console.error('Error loading blog:', error);
         }
-    }, [usedPositions]);
+        return null;
+    };
 
+    // Initialize on mount - only runs once
     useEffect(() => {
-        const resolveParams = async () => {
+        if (isInitializedRef.current) return;
+        
+        const initializePage = async () => {
             const resolvedParams = await params;
             setShortURL(resolvedParams.shortURL);
 
@@ -101,6 +99,7 @@ export default function DynamicBlogPage({ params }) {
                 const data = JSON.parse(storedData);
                 setLinkData(data);
 
+                // Update statistics
                 await fetch('/api/update-statistics', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -110,49 +109,47 @@ export default function DynamicBlogPage({ params }) {
                     }),
                 });
 
-                // Randomize timer position for first blog
-                const randomIndex = Math.floor(Math.random() * ALL_POSITIONS.length);
-                const randomPosition = ALL_POSITIONS[randomIndex];
-                setTimerPosition(randomPosition);
-                setUsedPositions([randomPosition]); // Track first position
-
-                // Fetch first random blog (no category filter - any blog from DB)
+                // Load first random blog
                 await loadRandomBlog([]);
+                isInitializedRef.current = true;
             } else {
                 router.push(`/verify/${resolvedParams.shortURL}`);
                 return;
             }
             setIsLoading(false);
         };
-        resolveParams();
-    }, [params, router, loadRandomBlog]);
+        
+        initializePage();
+    }, [params, router]);
 
+    // Timer countdown
     useEffect(() => {
-        if (timer > 0 && !isLoading && blog) {
+        if (timer > 0 && !isLoading && blog && !isLoadingNextBlog) {
             const interval = setInterval(() => {
                 setTimer(prev => prev - 1);
             }, 1000);
             return () => clearInterval(interval);
         }
-    }, [timer, isLoading, blog]);
+    }, [timer, isLoading, blog, isLoadingNextBlog]);
 
-    const handleContinue = () => {
+    const handleContinue = async () => {
         if (timer === 0) {
             if (isLastBlog && linkData) {
                 // Last blog - redirect to final destination
                 window.location.href = linkData.originalUrl;
             } else {
-                // Load next random blog
-                setBlogIndex(prev => {
-                    const newIndex = prev + 1;
+                // Show loading state while fetching next blog
+                setIsLoadingNextBlog(true);
+                
+                // Load next blog first, then update UI
+                const newBlog = await loadRandomBlog(viewedBlogIdsRef.current);
+                
+                if (newBlog) {
+                    setBlogIndex(prev => prev + 1);
                     setTimer(15);
-                    // Reset blog to null to show loading state
-                    setBlog(null);
-                    // Load next blog - position will be randomized in loadRandomBlog
-                    // and will exclude the last position to avoid consecutive repeats
-                    loadRandomBlog(viewedBlogIds);
-                    return newIndex;
-                });
+                }
+                
+                setIsLoadingNextBlog(false);
             }
         }
     };
@@ -168,7 +165,7 @@ export default function DynamicBlogPage({ params }) {
         );
     }
 
-    const isReady = timer === 0;
+    const isReady = timer === 0 && !isLoadingNextBlog;
 
     // Step calculation: Verify page is step 1, so blogs start from step 2
     const currentStep = blogIndex + 2; // +2 because verify is step 1, first blog is step 2
@@ -183,6 +180,16 @@ export default function DynamicBlogPage({ params }) {
                     You are on step <span className="font-bold text-lg text-blue-600">{currentStep}</span>/5
                 </p>
             </div>
+
+            {/* Loading overlay for next blog */}
+            {isLoadingNextBlog && (
+                <div className="fixed inset-0 bg-white/80 z-50 flex items-center justify-center">
+                    <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Loading next article...</p>
+                    </div>
+                </div>
+            )}
 
             {/* Main Blog Content */}
             <main className="px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
@@ -205,18 +212,21 @@ export default function DynamicBlogPage({ params }) {
                             {timerPosition === 'middle' && (
                                 <div className="my-8 text-center">
                                     <div className="flex flex-col items-center space-y-4">
-                                        {!isReady && (
+                                        {!isReady && !isLoadingNextBlog && (
                                             <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-gray-300 border-t-blue-600"></div>
                                         )}
-                                        <p className="text-sm sm:text-base text-gray-600">
-                                            Please wait for <span className="font-semibold text-blue-600">{timer}</span> seconds to continue...
-                                        </p>
+                                        {!isLoadingNextBlog && (
+                                            <p className="text-sm sm:text-base text-gray-600">
+                                                Please wait for <span className="font-semibold text-blue-600">{timer}</span> seconds to continue...
+                                            </p>
+                                        )}
                                     </div>
                                     
                                     {isReady && (
                                         <button
                                             onClick={handleContinue}
-                                            className="mt-4 text-base sm:text-lg font-medium text-blue-600 hover:text-blue-700 underline cursor-pointer transition"
+                                            disabled={isLoadingNextBlog}
+                                            className="mt-4 text-base sm:text-lg font-medium text-blue-600 hover:text-blue-700 underline cursor-pointer transition disabled:opacity-50"
                                         >
                                             Continue →
                                         </button>
@@ -242,18 +252,21 @@ export default function DynamicBlogPage({ params }) {
                         {timerPosition === 'bottom' && (
                             <div className="mt-8 sm:mt-10 text-center">
                                 <div className="flex flex-col items-center space-y-4">
-                                    {!isReady && (
+                                    {!isReady && !isLoadingNextBlog && (
                                         <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-gray-300 border-t-blue-600"></div>
                                     )}
-                                    <p className="text-sm sm:text-base text-gray-600">
-                                        Please wait for <span className="font-semibold text-blue-600">{timer}</span> seconds to continue...
-                                    </p>
+                                    {!isLoadingNextBlog && (
+                                        <p className="text-sm sm:text-base text-gray-600">
+                                            Please wait for <span className="font-semibold text-blue-600">{timer}</span> seconds to continue...
+                                        </p>
+                                    )}
                                 </div>
                                 
                                 {isReady && (
                                     <button
                                         onClick={handleContinue}
-                                        className="mt-4 text-base sm:text-lg font-medium text-blue-600 hover:text-blue-700 underline cursor-pointer transition"
+                                        disabled={isLoadingNextBlog}
+                                        className="mt-4 text-base sm:text-lg font-medium text-blue-600 hover:text-blue-700 underline cursor-pointer transition disabled:opacity-50"
                                     >
                                         Continue →
                                     </button>
