@@ -1,15 +1,10 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
-// All available timer positions (never at top - always after title, category, and excerpt)
-const ALL_POSITIONS = [
-    'middle',   // After excerpt, before content
-    'bottom'    // Full timer at bottom
-];
 
 export default function DynamicBlogPage({ params }) {
     const router = useRouter();
@@ -21,16 +16,25 @@ export default function DynamicBlogPage({ params }) {
     const [blog, setBlog] = useState(null);
     const [blogIndex, setBlogIndex] = useState(0);
     const [isLastBlog, setIsLastBlog] = useState(false);
-    const [timerPosition, setTimerPosition] = useState('middle');
-    const TOTAL_BLOGS = 4;
+    const [showRobotButton, setShowRobotButton] = useState(false);
+    const [timerStarted, setTimerStarted] = useState(false);
+    const [showGoLinkButton, setShowGoLinkButton] = useState(false);
+    const [showContinueButton, setShowContinueButton] = useState(false);
+    const [continueTimer, setContinueTimer] = useState(5);
+    const [continueTimerStarted, setContinueTimerStarted] = useState(false);
+    const [showGetLinkButton, setShowGetLinkButton] = useState(false);
+    const [autoRedirectTimer, setAutoRedirectTimer] = useState(5);
+    const [currentStep, setCurrentStep] = useState(1);
+    const TOTAL_BLOGS = 3; // 3 blogs total (step 1, 2, 3)
     
     // Use refs to track state without causing re-renders
     const viewedBlogIdsRef = useRef([]);
-    const lastPositionRef = useRef(null);
     const isInitializedRef = useRef(false);
+    const continueButtonRef = useRef(null);
+    const hasAutoStartedTimer = useRef(false);
 
     // Function to load random blog - doesn't depend on state that changes frequently
-    const loadRandomBlog = async (excludeIds = []) => {
+    const loadRandomBlog = async (excludeIds = [], forceStep = null) => {
         try {
             // Fetch random blog without category filter
             const blogResponse = await fetch('/api/get-random-blog');
@@ -59,23 +63,39 @@ export default function DynamicBlogPage({ params }) {
                 
                 // Check if this is the last blog
                 const totalViewed = newViewedIds.length;
-                setIsLastBlog(totalViewed >= TOTAL_BLOGS);
+                setIsLastBlog(totalViewed >= TOTAL_BLOGS || forceStep === 3);
                 
-                // Randomize timer position - avoid consecutive same position
-                const lastPosition = lastPositionRef.current;
-                const availablePositions = lastPosition 
-                    ? ALL_POSITIONS.filter(pos => pos !== lastPosition)
-                    : [...ALL_POSITIONS];
+                // Reset button states for new blog
+                setShowRobotButton(false);
+                // Step calculation: newViewedIds.length is the count after adding current blog
+                // blogIndex 0 = step 1, blogIndex 1 = step 2, blogIndex 2 = step 3
+                // Use forceStep if provided, otherwise calculate from viewed count
+                const step = forceStep !== null ? forceStep : newViewedIds.length; // step 1, 2, or 3
+                setCurrentStep(step); // Update step state
+                hasAutoStartedTimer.current = false; // Reset auto-start flag for new blog
                 
-                if (availablePositions.length === 0) {
-                    availablePositions.push(...ALL_POSITIONS);
+                if (step === 1) {
+                    // Step 1: Show continue button at bottom
+                    setTimerStarted(false);
+                    setShowGoLinkButton(false);
+                    setShowContinueButton(true);
+                } else if (step === 2) {
+                    // Step 2: Show continue button at bottom (will auto-start timer when scrolled into view)
+                    setTimerStarted(false);
+                    setShowGoLinkButton(false);
+                    setShowContinueButton(true);
+                } else if (step === 3) {
+                    // Step 3: Start timer, show "your link will be ready soon"
+                    setTimerStarted(true);
+                    setShowGoLinkButton(false);
+                    setShowContinueButton(false);
+                    setShowGetLinkButton(false);
+                    setTimer(15); // Reset timer for step 3
+                    setAutoRedirectTimer(45); // Reset auto-redirect timer
                 }
+                setContinueTimer(5);
+                setContinueTimerStarted(false);
                 
-                const randomIndex = Math.floor(Math.random() * availablePositions.length);
-                const randomPosition = availablePositions[randomIndex];
-                
-                lastPositionRef.current = randomPosition;
-                setTimerPosition(randomPosition);
                 setBlog(finalBlog);
                 
                 return finalBlog;
@@ -109,8 +129,15 @@ export default function DynamicBlogPage({ params }) {
                     }),
                 });
 
-                // Load first random blog
-                await loadRandomBlog([]);
+                // Load first random blog (step 2 of overall flow - step 1 was verify page)
+                const firstBlog = await loadRandomBlog([]);
+                if (firstBlog) {
+                    // This is step 2 of overall flow (step 1 was verify page)
+                    // loadRandomBlog will set currentStep to 1 (first blog in blog page)
+                    // But we need to show step 2/3 in the counter
+                    // So we'll adjust: when blog page loads, it's step 2 of overall flow
+                    setShowContinueButton(true);
+                }
                 isInitializedRef.current = true;
             } else {
                 router.push(`/verify/${resolvedParams.shortURL}`);
@@ -122,37 +149,160 @@ export default function DynamicBlogPage({ params }) {
         initializePage();
     }, [params, router]);
 
-    // Timer countdown
+    // Calculate step flags
+    const isStep1 = currentStep === 1;
+    const isStep2 = currentStep === 2;
+    const isStep3 = currentStep === 3;
+    
+    // Intersection Observer for step 2 - auto-start timer when continue button area comes into view
     useEffect(() => {
-        if (timer > 0 && !isLoading && blog && !isLoadingNextBlog) {
+        if (!isStep2 || !continueButtonRef.current || hasAutoStartedTimer.current) {
+            return;
+        }
+        
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting && !hasAutoStartedTimer.current) {
+                        // Auto-start timer when scrolled into view
+                        hasAutoStartedTimer.current = true;
+                        setContinueTimerStarted(true);
+                    }
+                });
+            },
+            {
+                threshold: 0.5, // Trigger when 50% of the element is visible
+            }
+        );
+        
+        observer.observe(continueButtonRef.current);
+        
+        return () => {
+            if (continueButtonRef.current) {
+                observer.unobserve(continueButtonRef.current);
+            }
+        };
+    }, [isStep2, blog]);
+
+    // Auto-scroll to top when step 3 starts
+    useEffect(() => {
+        if (isStep3 && blog && !isLoadingNextBlog) {
+            // Scroll to top when step 3 blog loads
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+    }, [isStep3, blog, isLoadingNextBlog]);
+
+    // Timer countdown (for step 3 only - shows "your link will be ready soon")
+    useEffect(() => {
+        if (timerStarted && timer > 0 && !isLoading && blog && !isLoadingNextBlog && isStep3) {
             const interval = setInterval(() => {
-                setTimer(prev => prev - 1);
+                setTimer(prev => {
+                    const newValue = prev - 1;
+                    if (newValue === 0) {
+                        // Step 3 timer finished, show "Get Link" button
+                        setShowGetLinkButton(true);
+                        // Start auto-redirect timer (45 seconds)
+                        setAutoRedirectTimer(45);
+                    }
+                    return newValue;
+                });
             }, 1000);
             return () => clearInterval(interval);
         }
-    }, [timer, isLoading, blog, isLoadingNextBlog]);
+    }, [timerStarted, timer, isLoading, blog, isLoadingNextBlog, isStep3]);
 
-    const handleContinue = async () => {
-        if (timer === 0) {
-            if (isLastBlog && linkData) {
-                // Last blog - redirect to final destination
-                window.location.href = linkData.originalUrl;
-            } else {
-                // Show loading state while fetching next blog
-                setIsLoadingNextBlog(true);
+    // Auto-redirect timer for step 3 (if "Get Link" button not clicked)
+    useEffect(() => {
+        if (showGetLinkButton && autoRedirectTimer > 0 && isStep3 && linkData) {
+            const timer = setInterval(() => {
+                setAutoRedirectTimer(prev => {
+                    const newValue = prev - 1;
+                    if (newValue === 0) {
+                        // Auto-redirect after 45 seconds - redirect in same tab
+                        window.location.href = linkData.originalUrl;
+                    }
+                    return newValue;
+                });
+            }, 1000);
+            return () => clearInterval(timer);
+        }
+    }, [showGetLinkButton, autoRedirectTimer, isStep3, linkData]);
+
+    // Handle "Get Link" button click
+    const handleGetLinkClick = () => {
+        if (linkData && linkData.originalUrl) {
+            // Open in new tab
+            window.open(linkData.originalUrl, '_blank');
+        } else {
+            console.error('Link data not available for redirect');
+            alert('Link not available. Please try again.');
+        }
+    };
+
+    // Handle "Dual tap Go link" button - scroll down
+    const handleGoLinkClick = () => {
+        window.scrollTo({
+            top: document.documentElement.scrollHeight,
+            behavior: 'smooth'
+        });
+        setShowContinueButton(true);
+    };
+
+
+    // Handle "Dual tap Continue" button click
+    const handleContinueButtonClick = () => {
+        setContinueTimerStarted(true);
+    };
+
+    const handleContinue = useCallback(async () => {
+        if (isLastBlog && linkData) {
+            // Last blog - redirect to final destination (open in new tab)
+            window.open(linkData.originalUrl, '_blank');
+        } else {
+            // Show loading state while fetching next blog
+            setIsLoadingNextBlog(true);
+            
+            // If on step 1, skip to step 3 directly (final step)
+            if (currentStep === 1) {
+                // Load one blog and force it to be step 3 (last step)
+                const newBlog = await loadRandomBlog(viewedBlogIdsRef.current, 3);
                 
-                // Load next blog first, then update UI
+                if (newBlog) {
+                    setBlogIndex(2); // Set to last index
+                }
+            } else {
+                // Normal flow for step 2
                 const newBlog = await loadRandomBlog(viewedBlogIdsRef.current);
                 
                 if (newBlog) {
                     setBlogIndex(prev => prev + 1);
                     setTimer(15);
                 }
-                
-                setIsLoadingNextBlog(false);
             }
+            
+            setIsLoadingNextBlog(false);
         }
-    };
+    }, [isLastBlog, linkData, currentStep]);
+
+    // Continue timer after "Dual tap Continue" is clicked
+    useEffect(() => {
+        if (continueTimerStarted && continueTimer > 0) {
+            const timer = setInterval(() => {
+                setContinueTimer(prev => {
+                    const newValue = prev - 1;
+                    if (newValue === 0) {
+                        // Timer finished, proceed to next blog or final destination
+                        handleContinue();
+                    }
+                    return newValue;
+                });
+            }, 1000);
+            return () => clearInterval(timer);
+        }
+    }, [continueTimerStarted, continueTimer, handleContinue]);
 
     if (isLoading) {
         return (
@@ -165,21 +315,19 @@ export default function DynamicBlogPage({ params }) {
         );
     }
 
-    const isReady = timer === 0 && !isLoadingNextBlog;
-
-    // Step calculation: Verify page is step 1, so blogs start from step 2
-    const currentStep = blogIndex + 2; // +2 because verify is step 1, first blog is step 2
 
     return (
         <div className="min-h-screen bg-white">
             <Header />
 
             {/* Fixed Step Counter - Always visible at top */}
-            <div className="sticky top-16 z-40 py-2 px-4 text-center border-b border-gray-200">
-                <p className="text-sm sm:text-base font-semibold text-gray-700">
-                    You are on step <span className="font-bold text-lg text-blue-600">{currentStep}</span>/5
-                </p>
-            </div>
+            {!isLoading && (
+                <div className="sticky top-16 z-40 py-2 px-4 text-center border-b border-gray-200 bg-white">
+                    <p className="text-sm sm:text-base font-semibold text-gray-700">
+                        You are on step <span className="font-bold text-lg text-blue-600">{Math.min(currentStep + 1, 3)}</span>/3
+                    </p>
+                </div>
+            )}
 
             {/* Loading overlay for next blog */}
             {isLoadingNextBlog && (
@@ -196,6 +344,18 @@ export default function DynamicBlogPage({ params }) {
                 <article className="prose prose-sm sm:prose-base lg:prose-lg max-w-none">
                     {blog ? (
                         <>
+                            {/* Step 2: Show "Scroll Down to get the link" at top */}
+                            {(isStep2 || isStep1) && (
+                                <div className="mb-8 text-center">
+                                    <button
+                                        className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-lg text-base sm:text-lg cursor-default"
+                                        disabled
+                                    >
+                                        👇 Scroll Down to get the link 👇
+                                    </button>
+                                </div>
+                            )}
+
                             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">
                                 {blog.title}
                             </h1>
@@ -208,31 +368,50 @@ export default function DynamicBlogPage({ params }) {
                                 {blog.excerpt}
                             </p>
 
-                            {/* Timer in Middle (after excerpt, before content) */}
-                            {timerPosition === 'middle' && (
+                            {/* Step 3: Timer or "Get Link" button at top - BEFORE content */}
+                            {isStep3 && (
                                 <div className="my-8 text-center">
-                                    <div className="flex flex-col items-center space-y-4">
-                                        {!isReady && !isLoadingNextBlog && (
+                                    {timerStarted && timer > 0 ? (
+                                        // Show timer while counting down
+                                        <div className="flex flex-col items-center space-y-4">
                                             <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-gray-300 border-t-blue-600"></div>
-                                        )}
-                                        {!isLoadingNextBlog && (
-                                            <p className="text-sm sm:text-base text-gray-600">
-                                                Please wait for <span className="font-semibold text-blue-600">{timer}</span> seconds to continue...
+                                            <p className="text-base sm:text-lg font-semibold text-gray-700">
+                                                Your link will be ready soon, please wait...
                                             </p>
-                                        )}
-                                    </div>
-                                    
-                                    {isReady && (
-                                        <button
-                                            onClick={handleContinue}
-                                            disabled={isLoadingNextBlog}
-                                            className="mt-4 text-base sm:text-lg font-medium text-blue-600 hover:text-blue-700 underline cursor-pointer transition disabled:opacity-50"
-                                        >
-                                            Continue →
-                                        </button>
+                                            <p className="text-sm sm:text-base text-gray-600">
+                                                Please wait for <span className="font-semibold text-blue-600">{timer}</span> seconds...
+                                            </p>
+                                        </div>
+                                    ) : showGetLinkButton ? (
+                                        // Show "Get Link" button when timer finishes (replaces timer)
+                                        <div className="flex flex-col items-center space-y-4">
+                                            {linkData && linkData.originalUrl ? (
+                                                <>
+                                                    <button
+                                                        onClick={handleGetLinkClick}
+                                                        className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-lg text-base sm:text-lg"
+                                                    >
+                                                        Click here
+                                                    </button>
+                                                    {autoRedirectTimer > 0 && (
+                                                        <p className="text-sm text-gray-600">
+                                                            Auto-redirecting in <span className="font-semibold text-blue-600">{autoRedirectTimer}</span> seconds...
+                                                        </p>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <p className="text-red-600 font-semibold">Error: Link data not available. Please refresh the page.</p>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        // Show message if timer finished but button not shown yet
+                                        <p className="text-base sm:text-lg font-semibold text-gray-700">
+                                            Preparing your link...
+                                        </p>
                                     )}
                                 </div>
                             )}
+
 
                             {/* Content */}
                             <div className="prose prose-sm sm:prose-base lg:prose-lg max-w-none">
@@ -247,29 +426,32 @@ export default function DynamicBlogPage({ params }) {
                                 </p>
                             )}
                         </div>
-
-                        {/* Timer at Bottom (full at bottom) */}
-                        {timerPosition === 'bottom' && (
-                            <div className="mt-8 sm:mt-10 text-center">
-                                <div className="flex flex-col items-center space-y-4">
-                                    {!isReady && !isLoadingNextBlog && (
+                        
+                        {/* Step 1 & 2: Continue Button at Bottom of Page */}
+                        {(isStep1 || isStep2) && showContinueButton && (
+                            <div ref={continueButtonRef} className="mt-12 mb-8 text-center">
+                                {continueTimerStarted && continueTimer > 0 ? (
+                                    <div className="flex flex-col items-center space-y-4">
                                         <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-gray-300 border-t-blue-600"></div>
-                                    )}
-                                    {!isLoadingNextBlog && (
                                         <p className="text-sm sm:text-base text-gray-600">
-                                            Please wait for <span className="font-semibold text-blue-600">{timer}</span> seconds to continue...
+                                            Please wait for <span className="font-semibold text-blue-600">{continueTimer}</span> seconds...
                                         </p>
-                                    )}
-                                </div>
-                                
-                                {isReady && (
+                                    </div>
+                                ) : isStep1 ? (
+                                    // Step 1: Show button (manual click)
                                     <button
-                                        onClick={handleContinue}
-                                        disabled={isLoadingNextBlog}
-                                        className="mt-4 text-base sm:text-lg font-medium text-blue-600 hover:text-blue-700 underline cursor-pointer transition disabled:opacity-50"
+                                        onClick={handleContinueButtonClick}
+                                        className="px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition shadow-lg text-base sm:text-lg"
                                     >
-                                        Continue →
+                                        Dual tap "Next"
                                     </button>
+                                ) : (
+                                    // Step 2: Show message that timer will start when scrolled into view
+                                    <div className="flex flex-col items-center space-y-4">
+                                        <p className="text-sm sm:text-base text-gray-600">
+                                            Scroll to see timer...
+                                        </p>
+                                    </div>
                                 )}
                             </div>
                         )}

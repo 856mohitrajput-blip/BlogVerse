@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Script from 'next/script';
-import Image from 'next/image';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 
@@ -37,9 +36,14 @@ export default function VerifyPage({ params }) {
     const [error, setError] = useState(null);
     const [isVerifying, setIsVerifying] = useState(false);
     const [loadTimer, setLoadTimer] = useState(10);
+    const [showRobotButton, setShowRobotButton] = useState(true);
+    const [timerStarted, setTimerStarted] = useState(false);
     const [showCaptcha, setShowCaptcha] = useState(false);
+    const [captchaVerified, setCaptchaVerified] = useState(false);
+    const [showGoLinkButton, setShowGoLinkButton] = useState(false);
+    const [showContinueButton, setShowContinueButton] = useState(false);
+    const [continueTimer, setContinueTimer] = useState(5);
     const [blog, setBlog] = useState(null);
-    const [timerPosition, setTimerPosition] = useState('top'); // 'top', 'middle', 'bottom'
 
     useEffect(() => {
         const resolveParams = async () => {
@@ -57,32 +61,34 @@ export default function VerifyPage({ params }) {
                 console.error('Error fetching blog:', error);
             }
             
-            // Randomize timer position
-            const positions = ['top', 'middle', 'bottom'];
-            const randomPosition = positions[Math.floor(Math.random() * positions.length)];
-            setTimerPosition(randomPosition);
-            
             setIsLoading(false);
         };
         resolveParams();
     }, [params]);
 
-    // Countdown timer before showing captcha
+    // Handle robot button click - start timer
+    const handleRobotButtonClick = () => {
+        setShowRobotButton(false);
+        setTimerStarted(true);
+    };
+
+    // Countdown timer after robot button is clicked
     useEffect(() => {
-        if (!isLoading && loadTimer > 0) {
+        if (timerStarted && loadTimer > 0) {
             const timer = setInterval(() => {
                 setLoadTimer(prev => {
                     const newValue = prev - 1;
                     if (newValue === 0) {
-                        setShowCaptcha(true);
+                        setShowCaptcha(true); // Show reCAPTCHA after timer
                     }
                     return newValue;
                 });
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [isLoading, loadTimer]);
+    }, [timerStarted, loadTimer]);
 
+    // Handle reCAPTCHA success
     const handleRecaptchaSuccess = useCallback(async (token) => {
         setIsVerifying(true);
         setError(null);
@@ -92,13 +98,54 @@ export default function VerifyPage({ params }) {
             
             if (!recaptchaResult.success) {
                 setError(recaptchaResult.error || 'reCAPTCHA verification failed');
+                setIsVerifying(false);
                 return;
             }
 
+            // reCAPTCHA verified successfully
+            setCaptchaVerified(true);
+            setShowGoLinkButton(true);
+            setIsVerifying(false);
+        } catch (error) {
+            console.error('Error during verification:', error);
+            setError('Verification failed. Please try again.');
+            setIsVerifying(false);
+        }
+    }, []);
+
+    // Set up global callbacks for reCAPTCHA
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            window.onRecaptchaSuccess = (token) => {
+                handleRecaptchaSuccess(token);
+            };
+            window.onRecaptchaError = () => {
+                setError('reCAPTCHA verification failed. Please try again.');
+                setIsVerifying(false);
+            };
+        }
+    }, [handleRecaptchaSuccess]);
+
+    // Handle "Dual tap Go link" button - scroll down
+    const handleGoLinkClick = () => {
+        window.scrollTo({
+            top: document.documentElement.scrollHeight,
+            behavior: 'smooth'
+        });
+        setShowContinueButton(true);
+    };
+
+    // Handle final continue - proceed to blog page
+    const handleFinalContinue = useCallback(async () => {
+        setIsVerifying(true);
+        setError(null);
+        
+        try {
             const linkData = await getLinkDetails(shortURL);
             
             if (linkData.error) {
                 setError(linkData.error);
+                setIsVerifying(false);
                 return;
             }
 
@@ -106,7 +153,7 @@ export default function VerifyPage({ params }) {
                 originalUrl: linkData.originalUrl,
                 userEmail: linkData.userEmail,
                 shortURL: shortURL,
-                recaptchaToken: token,
+                recaptchaToken: 'verified',
                 verifiedAt: new Date().toISOString()
             }));
 
@@ -114,10 +161,34 @@ export default function VerifyPage({ params }) {
         } catch (error) {
             console.error('Error during verification:', error);
             setError('Verification failed. Please try again.');
-        } finally {
             setIsVerifying(false);
         }
     }, [shortURL, router]);
+
+    const [continueTimerStarted, setContinueTimerStarted] = useState(false);
+
+    // Continue timer after "Dual tap Continue" is clicked
+    useEffect(() => {
+        if (continueTimerStarted && continueTimer > 0) {
+            const timer = setInterval(() => {
+                setContinueTimer(prev => {
+                    const newValue = prev - 1;
+                    if (newValue === 0) {
+                        // Timer finished, proceed to blog page
+                        handleFinalContinue();
+                    }
+                    return newValue;
+                });
+            }, 1000);
+            return () => clearInterval(timer);
+        }
+    }, [continueTimerStarted, continueTimer, handleFinalContinue]);
+
+    // Handle "Dual tap Continue" button click
+    const handleContinueClick = () => {
+        // Directly proceed to next step without timer
+        handleFinalContinue();
+    };
 
     // Set up global callbacks for reCAPTCHA
     useEffect(() => {
@@ -155,9 +226,9 @@ export default function VerifyPage({ params }) {
                 <Header />
 
                 {/* Fixed Step Counter - Always visible at top */}
-                <div className="sticky top-16 z-40 py-2 px-4 text-center border-b border-gray-200">
+                <div className="sticky top-16 z-40 py-2 px-4 text-center border-b border-gray-200 bg-white">
                     <p className="text-sm sm:text-base font-semibold text-gray-700">
-                        You are on step <span className="font-bold text-lg text-blue-600">1</span>/5
+                        You are on step <span className="font-bold text-lg text-blue-600">1</span>/3
                     </p>
                 </div>
 
@@ -166,45 +237,57 @@ export default function VerifyPage({ params }) {
                     <article className="prose prose-sm sm:prose-base lg:prose-lg max-w-none">
                         {blog ? (
                             <>
-                                {/* Timer at Top */}
-                                {timerPosition === 'top' && (
-                                    <div className="mb-8">
-                                        {error && (
-                                            <div className="bg-red-50 border-l-4 border-red-400 p-3 mb-4">
-                                                <p className="text-red-700 text-sm">{error}</p>
-                                            </div>
-                                        )}
-
-                                        <div className="flex justify-center mb-4 sm:mb-6">
-                                            {!showCaptcha ? (
-                                                <div className="text-center px-4">
-                                                    <div className="flex flex-col items-center space-y-3 sm:space-y-4">
-                                                        <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-gray-300 border-t-blue-600"></div>
-                                                        <span className="text-base sm:text-lg font-semibold text-gray-700">
-                                                            Please wait for <span className="text-blue-600">{loadTimer}</span> seconds...
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="scale-90 sm:scale-100 origin-center">
-                                                    <div
-                                                        className="g-recaptcha"
-                                                        data-sitekey="6LfcuvcrAAAAAG6BSOLy_gQps5JMWqpcs5Wiegqi"
-                                                        data-callback="onRecaptchaSuccess"
-                                                        data-error-callback="onRecaptchaError"
-                                                    ></div>
-                                                </div>
-                                            )}
+                                {/* Buttons at Top */}
+                                <div className="mb-8">
+                                    {error && (
+                                        <div className="bg-red-50 border-l-4 border-red-400 p-3 mb-4">
+                                            <p className="text-red-700 text-sm">{error}</p>
                                         </div>
+                                    )}
 
-                                        {isVerifying && (
-                                            <div className="flex justify-center items-center space-x-2 text-gray-600 text-xs sm:text-sm mb-4">
-                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-                                                <span>Verifying...</span>
+                                    <div className="flex justify-center mb-4 sm:mb-6">
+                                        {showRobotButton ? (
+                                            <button
+                                                onClick={handleRobotButtonClick}
+                                                className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition shadow-lg text-base sm:text-lg"
+                                            >
+                                                I am not robot
+                                            </button>
+                                        ) : timerStarted && loadTimer > 0 ? (
+                                            <div className="text-center px-4">
+                                                <div className="flex flex-col items-center space-y-3 sm:space-y-4">
+                                                    <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-gray-300 border-t-blue-600"></div>
+                                                    <span className="text-base sm:text-lg font-semibold text-gray-700">
+                                                        Please wait for <span className="text-blue-600">{loadTimer}</span> seconds...
+                                                    </span>
+                                                </div>
                                             </div>
-                                        )}
+                                        ) : showCaptcha && !captchaVerified ? (
+                                            <div className="scale-90 sm:scale-100 origin-center">
+                                                <div
+                                                    className="g-recaptcha"
+                                                    data-sitekey="6LfcuvcrAAAAAG6BSOLy_gQps5JMWqpcs5Wiegqi"
+                                                    data-callback="onRecaptchaSuccess"
+                                                    data-error-callback="onRecaptchaError"
+                                                ></div>
+                                            </div>
+                                        ) : showGoLinkButton ? (
+                                            <button
+                                                onClick={handleGoLinkClick}
+                                                className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition shadow-lg text-base sm:text-lg"
+                                            >
+                                                Dual tap "Go link"
+                                            </button>
+                                        ) : null}
                                     </div>
-                                )}
+
+                                    {isVerifying && (
+                                        <div className="flex justify-center items-center space-x-2 text-gray-600 text-xs sm:text-sm mb-4">
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                                            <span>Verifying...</span>
+                                        </div>
+                                    )}
+                                </div>
 
                                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">
                                     {blog.title}
@@ -217,46 +300,6 @@ export default function VerifyPage({ params }) {
                                 <p className="text-base sm:text-lg lg:text-xl text-gray-700 leading-relaxed mb-4 sm:mb-6">
                                     {blog.excerpt}
                                 </p>
-
-                                {/* Timer in Middle - Split content */}
-                                {timerPosition === 'middle' && (
-                                    <div className="my-8">
-                                        {error && (
-                                            <div className="bg-red-50 border-l-4 border-red-400 p-3 mb-4">
-                                                <p className="text-red-700 text-sm">{error}</p>
-                                            </div>
-                                        )}
-
-                                        <div className="flex justify-center mb-4 sm:mb-6">
-                                            {!showCaptcha ? (
-                                                <div className="text-center px-4">
-                                                    <div className="flex flex-col items-center space-y-3 sm:space-y-4">
-                                                        <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-gray-300 border-t-blue-600"></div>
-                                                        <span className="text-base sm:text-lg font-semibold text-gray-700">
-                                                            Please wait for <span className="text-blue-600">{loadTimer}</span> seconds...
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="scale-90 sm:scale-100 origin-center">
-                                                    <div
-                                                        className="g-recaptcha"
-                                                        data-sitekey="6LfcuvcrAAAAAG6BSOLy_gQps5JMWqpcs5Wiegqi"
-                                                        data-callback="onRecaptchaSuccess"
-                                                        data-error-callback="onRecaptchaError"
-                                                    ></div>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {isVerifying && (
-                                            <div className="flex justify-center items-center space-x-2 text-gray-600 text-xs sm:text-sm mb-4">
-                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-                                                <span>Verifying...</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
 
                                 {/* Content */}
                                 <div className="prose prose-sm sm:prose-base lg:prose-lg max-w-none">
@@ -272,43 +315,15 @@ export default function VerifyPage({ params }) {
                                     )}
                                 </div>
                                 
-                                {/* Timer at Bottom */}
-                                {timerPosition === 'bottom' && (
-                                    <div className="mt-8">
-                                        {error && (
-                                            <div className="bg-red-50 border-l-4 border-red-400 p-3 mb-4">
-                                                <p className="text-red-700 text-sm">{error}</p>
-                                            </div>
-                                        )}
-
-                                        <div className="flex justify-center mb-4 sm:mb-6">
-                                            {!showCaptcha ? (
-                                                <div className="text-center px-4">
-                                                    <div className="flex flex-col items-center space-y-3 sm:space-y-4">
-                                                        <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-4 border-gray-300 border-t-blue-600"></div>
-                                                        <span className="text-base sm:text-lg font-semibold text-gray-700">
-                                                            Please wait for <span className="text-blue-600">{loadTimer}</span> seconds...
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="scale-90 sm:scale-100 origin-center">
-                                                    <div
-                                                        className="g-recaptcha"
-                                                        data-sitekey="6LfcuvcrAAAAAG6BSOLy_gQps5JMWqpcs5Wiegqi"
-                                                        data-callback="onRecaptchaSuccess"
-                                                        data-error-callback="onRecaptchaError"
-                                                    ></div>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {isVerifying && (
-                                            <div className="flex justify-center items-center space-x-2 text-gray-600 text-xs sm:text-sm mb-4">
-                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-                                                <span>Verifying...</span>
-                                            </div>
-                                        )}
+                                {/* Continue Button at Bottom of Page */}
+                                {showContinueButton && (
+                                    <div className="mt-12 mb-8 text-center">
+                                        <button
+                                            onClick={handleContinueClick}
+                                            className="px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition shadow-lg text-base sm:text-lg"
+                                        >
+                                            Dual tap "Continue"
+                                        </button>
                                     </div>
                                 )}
                                 
